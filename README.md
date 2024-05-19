@@ -1,3 +1,9 @@
+# Style-Bert-VITS2のフォーク
+フォーク元　https://github.com/litagin02/Style-Bert-VITS2
+
+用途：個人的に新機能を試す
+
+
 # Style-Bert-VITS2
 
 Bert-VITS2 with more controllable voice styles.
