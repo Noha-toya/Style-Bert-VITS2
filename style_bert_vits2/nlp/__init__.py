@@ -24,6 +24,9 @@ def extract_bert_feature(
     device: str,
     assist_text: Optional[str] = None,
     assist_text_weight: float = 0.7,
+    removed_parentheses_text: Optional[str] = None,
+    removed_parentheses_word2ph: Optional[list[int]] = None,
+    removed_parentheses_fags: Optional[list[bool]] = None,
 ) -> "torch.Tensor":
     """
     テキストから BERT の特徴量を抽出する
@@ -42,6 +45,8 @@ def extract_bert_feature(
 
     if language == Languages.JP:
         from style_bert_vits2.nlp.japanese.bert_feature import extract_bert_feature
+        return extract_bert_feature(text, word2ph, device, assist_text, assist_text_weight,removed_parentheses_text,removed_parentheses_word2ph,removed_parentheses_fags)
+
     elif language == Languages.EN:
         from style_bert_vits2.nlp.english.bert_feature import extract_bert_feature
     elif language == Languages.ZH:
@@ -57,7 +62,7 @@ def clean_text(
     language: Languages,
     use_jp_extra: bool = True,
     raise_yomi_error: bool = False,
-) -> tuple[str, list[str], list[int], list[int]]:
+) -> tuple[str, list[str], list[int], list[int], str, list[str], list[int], list[int], list[bool] ]:
     """
     テキストをクリーニングし、音素に変換する
 
@@ -68,32 +73,38 @@ def clean_text(
         raise_yomi_error (bool, optional): False の場合、読めない文字が消えたような扱いとして処理される。Defaults to False.
 
     Returns:
-        tuple[str, list[str], list[int], list[int]]: クリーニングされたテキストと、音素・アクセント・元のテキストの各文字に音素が何個割り当てられるかのリスト
+        tuple[str, list[str], list[int], list[int], str, list[str], list[int], list[int], list[int] ]: クリーニングされたテキストと、音素・アクセント・元のテキストの各文字に音素が何個割り当てられるかのリスト
     """
 
     # Changed to import inside if condition to avoid unnecessary import
     if language == Languages.JP:
         from style_bert_vits2.nlp.japanese.g2p import g2p
         from style_bert_vits2.nlp.japanese.normalizer import normalize_text
+        
+        non_rm_norm_text = normalize_text(text)
+        rm_par_text,rm_par_fags = remove_parentheses_sentences(non_rm_norm_text)          # for mood
+        non_rm_phones, non_rm_tones, non_rm_word2ph = g2p(non_rm_norm_text, use_jp_extra, raise_yomi_error)
+        rm_par_phones, rm_par_tones, rm_par_word2ph = g2p(rm_par_text, use_jp_extra, raise_yomi_error) # for mood
 
-        norm_text = normalize_text(text)
-        phones, tones, word2ph = g2p(norm_text, use_jp_extra, raise_yomi_error)
     elif language == Languages.EN:
         from style_bert_vits2.nlp.english.g2p import g2p
         from style_bert_vits2.nlp.english.normalizer import normalize_text
 
-        norm_text = normalize_text(text)
-        phones, tones, word2ph = g2p(norm_text)
+        non_rm_norm_text = normalize_text(text)
+        rm_par_text,rm_par_fags = remove_parentheses_sentences(non_rm_norm_text)          # for mood
+        non_rm_phones, non_rm_tones, non_rm_word2ph = g2p(non_rm_norm_text)
+        rm_par_phones, rm_par_tones, rm_par_word2ph = g2p(rm_par_text) # for mood
     elif language == Languages.ZH:
         from style_bert_vits2.nlp.chinese.g2p import g2p
         from style_bert_vits2.nlp.chinese.normalizer import normalize_text
 
-        norm_text = normalize_text(text)
-        phones, tones, word2ph = g2p(norm_text)
-    else:
+        non_rm_norm_text = normalize_text(text)
+        rm_par_text,rm_par_fags = remove_parentheses_sentences(non_rm_norm_text)          # for mood
+        non_rm_phones, non_rm_tones, non_rm_word2ph = g2p(non_rm_norm_text)
+        rm_par_phones, rm_par_tones, rm_par_word2ph = g2p(rm_par_text) # for mood    else:
         raise ValueError(f"Language {language} not supported")
 
-    return norm_text, phones, tones, word2ph
+    return  rm_par_text, rm_par_phones, rm_par_tones, rm_par_word2ph,non_rm_norm_text, non_rm_phones, non_rm_tones, non_rm_word2ph, rm_par_fags
 
 
 def cleaned_text_to_sequence(
@@ -118,3 +129,65 @@ def cleaned_text_to_sequence(
     lang_ids = [lang_id for i in phones]
 
     return phones, tones, lang_ids
+
+
+
+def remove_parentheses_sentences(text):
+    """
+    mood のため、カッコの文章の削除と、カッコの文章の文字についてフラグ作成
+
+    Args:
+        s (str): 日本語のテキスト
+
+    Returns:
+        filtered_result: カッコの文章の削除後のテキスト
+        flags: 削除した文字にフラグ
+    """
+    open_count = text.count('(')
+    close_count = text.count(')')
+    
+    # バランスを取る
+    if open_count > close_count:
+        diff = open_count - close_count
+        ignored_open = 0
+        new_text = ""
+        for char in text:
+            if char == '(' and ignored_open < diff:
+                ignored_open += 1
+            else:
+                new_text += char
+        text = new_text
+    elif close_count > open_count:
+        diff = close_count - open_count
+        ignored_close = 0
+        new_text = ""
+        for char in reversed(text):
+            if char == ')' and ignored_close < diff:
+                ignored_close += 1
+            else:
+                new_text = char + new_text
+        text = new_text
+    
+    # カッコとその中身を削除
+    result_text = ""
+    flags = []
+    skip = 0
+    
+    for i, char in enumerate(text):
+        if char == '(':
+            skip += 1
+            flags.append(False)
+        elif char == ')' and skip > 0:
+            skip -= 1
+            flags.append(False)
+        elif skip > 0:
+            flags.append(False)
+        else:
+            result_text += char
+            flags.append(True)
+        
+    flags.insert(0,True)
+    flags.append(True)
+    
+    return result_text, flags
+

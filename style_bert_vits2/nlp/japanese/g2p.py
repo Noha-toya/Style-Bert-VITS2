@@ -109,6 +109,10 @@ def text_to_sep_kata(
     Returns:
         tuple[list[str], list[str]]: 分割された単語リストと、その読み（カタカナ or 記号1文字）のリスト
     """
+    
+    # for mood
+    norm_text = norm_text.replace("（", "'").replace("）", "'").replace("(", "'").replace(")", "'")
+
 
     # parsed: OpenJTalkの解析結果
     parsed = pyopenjtalk.run_frontend(norm_text)

@@ -13,6 +13,9 @@ def extract_bert_feature(
     device: str,
     assist_text: Optional[str] = None,
     assist_text_weight: float = 0.7,
+    removed_parentheses_text: Optional[str] = None,
+    removed_parentheses_word2ph: Optional[list[int]] = None,
+    removed_parentheses_fags: Optional[list[bool]] = None,
 ) -> torch.Tensor:
     """
     日本語のテキストから BERT の特徴量を抽出する
@@ -53,6 +56,15 @@ def extract_bert_feature(
             style_res = model(**style_inputs, output_hidden_states=True)
             style_res = torch.cat(style_res["hidden_states"][-3:-2], -1)[0].cpu()
             style_res_mean = style_res.mean(0)
+        
+
+    # mood のため、カッコの文章の部分を削除済みの、word2ph, textを使う
+    if removed_parentheses_text is not None:
+        text = removed_parentheses_text
+    if removed_parentheses_word2ph is not None:
+        word2ph = removed_parentheses_word2ph    
+    # mood のため、bert特徴量について、カッコの文章の部分の文字の特徴量を削除(テンソルのサイズを合わせる)
+    res=res[removed_parentheses_fags]
 
     assert len(word2ph) == len(text) + 2, text
     word2phone = word2ph

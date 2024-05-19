@@ -107,7 +107,7 @@ def get_text(
 ):
     use_jp_extra = hps.version.endswith("JP-Extra")
     # 推論時のみ呼び出されるので、raise_yomi_error は False に設定
-    norm_text, phone, tone, word2ph = clean_text(
+    norm_text, phone, tone, word2ph, non_rm_norm_text, non_rm_phones, non_rm_tones, non_rm_word2ph, rm_par_fags = clean_text(
         text,
         language_str,
         use_jp_extra=use_jp_extra,
@@ -163,12 +163,15 @@ def get_text(
             word2ph[i] = word2ph[i] * 2
         word2ph[0] += 1
     bert_ori = extract_bert_feature(
-        norm_text,
-        word2ph,
+        non_rm_norm_text,
+        non_rm_word2ph,
         language_str,
         device,
         assist_text,
         assist_text_weight,
+        norm_text, 
+        word2ph, 
+        rm_par_fags
     )
     del word2ph
     assert bert_ori.shape[-1] == len(phone), phone
@@ -195,7 +198,7 @@ def get_text(
     phone = torch.LongTensor(phone)
     tone = torch.LongTensor(tone)
     language = torch.LongTensor(language)
-    return bert, ja_bert, en_bert, phone, tone, language
+    return bert, ja_bert, en_bert, phone, tone, language,
 
 
 def infer(
