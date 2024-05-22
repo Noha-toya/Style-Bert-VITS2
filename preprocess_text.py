@@ -42,6 +42,7 @@ def process_line(
     correct_path: bool,
     use_jp_extra: bool,
     yomi_error: str,
+    train_list_clean_parentheses: Optional[bool] = False,
 ):
     splitted_line = line.strip().split("|")
     if len(splitted_line) != 4:
@@ -56,6 +57,12 @@ def process_line(
     if correct_path:
         utt = str(transcription_path.parent / "wavs" / utt)
 
+    # for mood 　bertの特徴量作成後train.listから、括弧を削除
+    norm_text=rm_par_text
+    phones=rm_par_phones
+    tones=rm_par_tones
+    word2ph=rm_par_word2ph
+        
     return "{}|{}|{}|{}|{}|{}|{}\n".format(
         utt,
         spk,
@@ -79,6 +86,7 @@ def preprocess(
     use_jp_extra: bool,
     yomi_error: str,
     correct_path: bool,
+    train_list_clean_parentheses: Optional[bool] = False,
 ):
     assert yomi_error in ["raise", "skip", "use"]
     if cleaned_path == "" or cleaned_path is None:
@@ -106,6 +114,7 @@ def preprocess(
                     correct_path,
                     use_jp_extra,
                     yomi_error,
+                    train_list_clean_parentheses,
                 )
                 out_file.write(processed_line)
             except Exception as e:

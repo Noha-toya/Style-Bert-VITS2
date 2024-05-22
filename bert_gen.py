@@ -5,7 +5,7 @@ import torch
 import torch.multiprocessing as mp
 from tqdm import tqdm
 
-from config import config
+from config import Preprocess_text_config, config
 from style_bert_vits2.constants import Languages
 from style_bert_vits2.logging import logger
 from style_bert_vits2.models import commons
@@ -14,17 +14,21 @@ from style_bert_vits2.nlp import (
     bert_models,
     cleaned_text_to_sequence,
     extract_bert_feature,
+    clean_text,
 )
 from style_bert_vits2.nlp.japanese import pyopenjtalk_worker
 from style_bert_vits2.nlp.japanese.user_dict import update_dict
 from style_bert_vits2.utils.stdout_wrapper import SAFE_STDOUT
-
+from preprocess_text import preprocess 
+from pathlib import Path
 
 # このプロセスからはワーカーを起動して辞書を使いたいので、ここで初期化
 pyopenjtalk_worker.initialize_worker()
 
 # dict_data/ 以下の辞書データを pyopenjtalk に適用
 update_dict()
+
+preprocess_text_config: Preprocess_text_config = config.preprocess_text_config
 
 
 def process_line(x: tuple[str, bool]):
@@ -57,16 +61,46 @@ def process_line(x: tuple[str, bool]):
 
     bert_path = wav_path.replace(".WAV", ".wav").replace(".wav", ".bert.pt")
 
-    try:
-        bert = torch.load(bert_path)
-        assert bert.shape[-1] == len(phone)
-    except Exception:
-        bert = extract_bert_feature(text, word2ph, language_str, device)
-        assert bert.shape[-1] == len(phone)
-        torch.save(bert, bert_path)
+    # for mood カッコ内を削除したものを取り寄せ
+    use_jp_extra = hps.version.endswith("JP-Extra")
+    rm_par_text, rm_par_phones, rm_par_tones, rm_par_word2ph, non_rm_norm_text, non_rm_phones, non_rm_tones, non_rm_word2ph, rm_par_fags = clean_text(
+        text,
+        Languages[language_str],
+        use_jp_extra=use_jp_extra,
+        raise_yomi_error=False,
+    )
+
+    rm_par_phones = commons.intersperse(rm_par_phones, 0)
+    for i in range(len(non_rm_word2ph)):
+        non_rm_word2ph[i] = non_rm_word2ph[i] * 2
+    non_rm_word2ph[0] += 1
+    for i in range(len(rm_par_word2ph)):
+        rm_par_word2ph[i] = rm_par_word2ph[i] * 2
+    rm_par_word2ph[0] += 1
+
+    # try:
+    #     bert = torch.load(bert_path)
+    #     assert bert.shape[-1] == len(rm_par_phones)
+    # except Exception:
+    #     bert = extract_bert_feature(non_rm_norm_text, non_rm_word2ph, Languages[language_str], device, None, 0.7, rm_par_text,rm_par_word2ph, rm_par_fags)
+    #     assert bert.shape[-1] == len(rm_par_phones)
+    #     torch.save(bert, bert_path)
+    bert = extract_bert_feature(
+        non_rm_norm_text, 
+        non_rm_word2ph, 
+        Languages[language_str], 
+        device, 
+        None, 
+        0.7, 
+        rm_par_text,
+        rm_par_word2ph, 
+        rm_par_fags
+        )
+    assert bert.shape[-1] == len(rm_par_phones)
+    torch.save(bert, bert_path)
 
 
-preprocess_text_config = config.preprocess_text_config
+#preprocess_text_config = config.preprocess_text_config
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -95,5 +129,29 @@ if __name__ == "__main__":
                     file=SAFE_STDOUT,
                 )
             )
+
+
+    transcription_path = Path(preprocess_text_config.transcription_path)
+    cleaned_path = Path(preprocess_text_config.cleaned_path) if preprocess_text_config.cleaned_path else None
+    train_path = Path(preprocess_text_config.train_path)
+    val_path = Path(preprocess_text_config.val_path)
+    config_path = Path(preprocess_text_config.config_path)
+    val_per_lang = int(preprocess_text_config.val_per_lang)
+    max_val_total = int(preprocess_text_config.max_val_total)
+    use_jp_extra = hps.version.endswith("JP-Extra")
+
+    preprocess(
+    transcription_path=transcription_path,
+    cleaned_path=cleaned_path,
+    train_path=train_path,
+    val_path=val_path,
+    config_path=config_path,
+    val_per_lang=val_per_lang,
+    max_val_total=max_val_total,
+    use_jp_extra=use_jp_extra,
+    yomi_error="use",
+    correct_path=True,
+    train_list_clean_parentheses=True,
+    )
 
     logger.info(f"bert.pt is generated! total: {len(lines)} bert.pt files.")
