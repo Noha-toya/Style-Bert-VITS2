@@ -1,6 +1,10 @@
 # Punctuations
-PUNCTUATIONS = ["!", "?", "…", ",", ".", "'", "-"]
-
+#PUNCTUATIONS = ["!", "?", "…", ",", ".", "'", "-"]
+PUNCTUATIONS = ["!", "?", "…", ",", ".", "'", "-","/0","/1","/2","/3","/4","/5","/6","/7","/8","/9"]
+    # _0 _ 無声化　通常の会話内で無声音化する場合は利用しない。
+    # _1 ↓ 吸気音
+    # _2 $ ファルセット
+    # _3 予約
 # Punctuations and special tokens
 PUNCTUATION_SYMBOLS = PUNCTUATIONS + ["SP", "UNK"]
 

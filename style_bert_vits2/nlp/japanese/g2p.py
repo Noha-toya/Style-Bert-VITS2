@@ -110,6 +110,9 @@ def text_to_sep_kata(
         tuple[list[str], list[str]]: 分割された単語リストと、その読み（カタカナ or 記号1文字）のリスト
     """
 
+    # 無音化、吸気音など、OpenJTaklの最低限認識できる文字へ変更
+    norm_text=norm_text.replace("_","＿").replace("$","＄")
+
     # parsed: OpenJTalkの解析結果
     parsed = pyopenjtalk.run_frontend(norm_text)
     sep_text: list[str] = []
@@ -135,8 +138,11 @@ def text_to_sep_kata(
         """
         assert yomi != "", f"Empty yomi: {word}"
         if yomi == "、":
-            # word は正規化されているので、`.`, `,`, `!`, `'`, `-`, `--` のいずれか
-            if not set(word).issubset(set(PUNCTUATIONS)):  # 記号繰り返しか判定
+            # 無声化、吸気音など
+            if word in "↓＄＿":
+                yomi = word # .replace("＿","_0").replace("↓","_1").replace("＄","_2")
+            # word は正規化されているので、`.`, `,`, `!`, `'`, `-`, `--` のいずれか (_0, _v, _1 追加)
+            elif not set(word).issubset(set(PUNCTUATIONS)):  # 記号繰り返しか判定
                 # ここは pyopenjtalk が読めない文字等のときに起こる
                 ## 例外を送出する場合
                 if raise_yomi_error:
@@ -627,6 +633,15 @@ def __kata_to_phoneme_list(text: str) -> list[str]:
 
     if set(text).issubset(set(PUNCTUATIONS)):
         return list(text)
+    # 無声化、吸気音など
+    if text in "_↓$＿＄":
+        if text == "_" or text == "＿":
+            return ["/0"]
+        elif text == "↓":
+            return ["/1"]
+        elif text == "$" or text == "＄":
+            return ["/2"]
+
     # `text` がカタカナ（`ー`含む）のみからなるかどうかをチェック
     if __KATAKANA_PATTERN.fullmatch(text) is None:
         raise ValueError(f"Input must be katakana only: {text}")
@@ -668,8 +683,17 @@ def __align_tones(
 
     result: list[tuple[str, int]] = []
     tone_index = 0
-    for phone in phones_with_punct:
-        if tone_index >= len(phone_tone_list):
+
+    for i, phone in enumerate(phones_with_punct):
+        if phone == "/" or phone.isdecimal():
+            # 無声化、ファルセットなど
+            if i == 0:
+                result.append((phone, 0))
+            else:
+                # 一つ前のtoneと同じものを追加
+                _,num = result[-1]
+                result.append((phone,num))
+        elif tone_index >= len(phone_tone_list):
             # 余った punctuation がある場合 → (punctuation, 0) を追加
             result.append((phone, 0))
         elif phone == phone_tone_list[tone_index][0]:
